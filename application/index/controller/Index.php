@@ -3,6 +3,7 @@ namespace app\index\controller;
 
 use think\Loader;
 use think\Controller;
+use think\cache\dirver\redis;
 
 
 class Index extends Controller
@@ -115,6 +116,7 @@ class Index extends Controller
         }
 
     }
+    //发送邮件
     public function email()
     {
         return $this->fetch();
@@ -127,4 +129,150 @@ class Index extends Controller
         $body="你好,".$username.',相亲网欢迎你的加入，以下是激活链接：http://localhost/tp5';
         sendmail($email,$title,$body);
     }
+
+    //上传文件 其上传的大小可在php.ini 中修改  查upload 大约791行
+    
+   public function shangchuan()
+    {
+        return $this->fetch();
+    }
+    public function do_shangchuan()
+    {
+        $data=input('post.');
+        $file=request()->file('files');
+        $dir= ROOT_PATH."public/Uploads";
+        if(is_dir($dir)){
+            echo "已存在正在上传文件...";
+            $files=$file->move($dir);
+        }else{
+            mkdir($dir);
+            echo "已创建完文件夹，并上传";
+            $files=$file->move($dir);
+        }
+    }
+
+
+    //分页 
+    public function userlist()
+    {
+
+//        echo "<pre>";
+//        print_r($info);exit;
+        $page=input('get.page')?input('get.page'):1;
+        $num=db('users')->count();
+        $tiao=5;
+        $pages=ceil($num/$tiao);
+        if($page==$pages)
+        {
+            $xia=$page;
+        }else{
+            $xia=$page+1;
+        }if($page==1) {
+            $shang=$page;
+    }else {
+            $shang=$page-1;
+    }
+        $info=db('users')->page($page,$tiao)->select();
+        $this->assign('page',$page);
+        $this->assign('pages',$pages);
+        $this->assign('shang',$shang);
+        $this->assign('xia',$xia);
+        $this->assign('info',$info);
+        return $this->fetch('userlist');
+    }
+
+    //验证码
+     public function yanzhengma()
+    {
+        return $this->fetch();
+    }
+    public function do_yanzhengma()
+    {
+        $data = input('post.');
+        $code = $data['code'];
+        unset($data['code']);
+
+        if (captcha_check($code)) {
+            $info=db('member')->insert($data);
+            if ($info) {
+                $result = [
+                    'msg' => '添加成功', 'status' => 1
+
+                ];
+                return json($result);
+            } else {
+                $result = [
+                    'msg' => '添加失败', 'status' => 2
+                ];
+                return json($result);
+            }
+        } else {
+            $result = [
+                'msg' => '验证码错误', 'status' => 3
+            ];
+            return json($result);
+        }
+    }
+    //缓存秒杀
+    public function miaoshas()
+    {
+        return $this->fetch('miaosha');
+    }
+
+    public function do_miaosha()
+    {
+        $ms=db('goods')->find();
+        $this->assign('ms',$ms);
+        return $this->fetch();
+    }
+
+    public function setnums()//导入缓存库
+    {
+        $nums=3;//设置商品数量
+        $redis=new \Redis();//实例化
+        $redis->connect('127.0.0.1','6379');//连接主机
+        for($i=0;$i<$nums;$i++)
+        {
+            $redis->lpush('goods_order:1',1);
+        }
+    }
+
+    public function do_ms()//处理立即秒杀
+{
+    $redis=new \Redis();
+    $redis->connect('127.0.0.1','6379');
+    $count=$redis->lpop('goods_order:1');//商品个数
+
+    if(!$count)
+    {
+        echo "抢光了！";
+    }else{
+        $info=$redis->lpush('miaosha_order:1',session('userid'));//用户id和个数
+        if($info)
+        {
+            echo "恭喜你抢到了！";
+        }else{
+            echo "没抢到！";
+        }
+    }
+
+   $goods_number=db('goods')->where('goods_id=1')->value('goods_number');//查询商品数量
+   if( $goods_number)
+   {
+       $data['goods_id']=1;
+       $data['userid']=session('userid');
+       $info=db('order')->insert($data);
+       db('goods')->where('goods_id=1')->setDec('goods_number');//自减数量
+       echo"恭喜你抢到了";
+   }else{
+       echo"抢光了！！！";
+   }
+}
+
+
+
+
+    
+    
+     
 }
